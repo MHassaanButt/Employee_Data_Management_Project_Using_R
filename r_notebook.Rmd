@@ -1,0 +1,241 @@
+---
+title: "R Notebook"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+## Reading Dataset
+
+```{r}
+data <- read.csv("employee_dataset.csv")
+View(data)
+head(data)
+```
+## No. of records in dataset
+
+```{r}
+cat("Number of rows", nrow(data), '\n')
+cat("Number of columns",ncol(data))
+```
+## Printing Column names 
+```{r}
+names(data)
+```
+
+
+```{r}
+library(tidyverse)
+
+as_tibble(data)
+```
+## Perofrming Label Encoding
+
+```{r}
+library(superml)
+label <- LabelEncoder$new()
+data$EmployeeID <- label$fit_transform(data$EmployeeID)
+data$Gender <- label$fit_transform(data$Gender)
+
+```
+```{r}
+str(data$Gender)
+str(data$EmployeeID)
+```
+# Method 1
+## Applying PCA
+
+
+```{r}
+data.pca <- prcomp(data[,c(1:3,7:9,12:16)], center = TRUE,scale. = TRUE)
+
+summary(data.pca)
+```
+```{r}
+str(data.pca)
+```
+```{r}
+library(devtools)
+install_github("vqv/ggbiplot")
+```
+```{r}
+library(ggbiplot)
+ggbiplot(data.pca)
+```
+```{r}
+ggbiplot(data.pca, labels=rownames(data))
+```
+```{r}
+data.Gender <- c(rep("Male", 1), rep("Female",2))
+
+ggbiplot(data.pca,ellipse=TRUE,  labels=rownames(data), groups=data.Gender)
+```
+```{r}
+data.Overall_SatisfactionScore <- c(rep("Detractor", 1), rep("Promoter",2), rep("Passive",3))
+                  #, rep("Europe", 7),rep("US",3), "Europe", rep("Japan", 3), rep("US",4), rep("Europe", 3), "US", rep("Europe", 3))
+
+ggbiplot(data.pca,ellipse=TRUE,  labels=rownames(data), groups=data.Overall_SatisfactionScore)
+
+```
+```{r}
+ggbiplot(data.pca,ellipse=TRUE,choices=c(2,3),   labels=rownames(data), groups=data.Overall_SatisfactionScore)
+```
+
+```{r}
+ggbiplot(data.pca,ellipse=TRUE,circle=TRUE, labels=rownames(data), groups=data.Overall_SatisfactionScore)
+```
+# Method 2
+## Applying
+
+```{r}
+library(tidyverse)
+library(rmarkdown)
+# install.packages("lme4")
+library(lme4)  # for mixed models
+
+# install.packages("emmeans")
+library(emmeans)  # for marginal effects
+
+# install.packages("effects")
+library(effects)  # for predicted marginal means
+
+```
+```{r}
+ # summary of columns, all rows
+  
+  summary(data)
+```
+```{r}
+  # correlation between expense and csat
+  cor(data[,c(1:3,7:9,12:16)], use = "pairwise") 
+```
+
+```{r}
+# scatter plot 
+qplot(x = Age, y = MonthlyIncome, geom = "point", data = data)
+```
+
+```{r}
+qplot(x = Age, y = TotalExperience, geom = "point", data = data)
+```
+
+# Method 2
+## Applying LDA
+
+```{r}
+library(MASS)
+library(tidyverse)
+library(caret)
+theme_set(theme_classic())
+```
+
+```{r}
+#label <- LabelEncoder$new()
+#data$Overall_SatisfactionScore <- #label$fit_transform(data$Overall_SatisfactionScore)
+#print(data$Overall_SatisfactionScore)
+```
+
+```{r}
+# Split the data into training (80%) and test set (20%)
+set.seed(123)
+training.individuals <- data$Overall_SatisfactionScore %>% 
+            createDataPartition(p = 0.8, list = FALSE)
+train.data <- data[training.individuals, ]
+test.data <- data[-training.individuals, ]
+```
+
+```{r}
+# Estimate preprocessing parameters
+preproc.parameter <- train.data %>% 
+  preProcess(method = c("center", "scale"))
+```
+
+```{r}
+# Transform the data using the estimated parameters
+train.transform <- preproc.parameter %>% predict(train.data)
+test.transform <- preproc.parameter %>% predict(test.data)
+```
+
+```{r}
+# Fit the model
+model <- lda(Overall_SatisfactionScore~., data = train.transform)
+```
+
+```{r}
+# Make predictions
+predictions <- model %>% predict(test.transform)
+```
+
+```{r}
+# Model accuracy
+mean(predictions$class==test.transform$Overall_SatisfactionScore)
+```
+
+```{r}
+
+model <- lda(Overall_SatisfactionScore~., data = train.transform)
+model
+```
+# Method 3
+## Applying Ridge Regression
+
+```{r}
+#define response variable
+label <- LabelEncoder$new()
+data$Overall_SatisfactionScore <- label$fit_transform(data$Overall_SatisfactionScore)
+y <- data$Overall_SatisfactionScore
+
+#define matrix of predictor variables
+x <- data.matrix(data[, c(1:3,7:9,12:16)])
+```
+
+
+```{r}
+library(glmnet)
+
+#fit ridge regression model
+model <- glmnet(x, y, alpha = 0)
+
+#view summary of model
+summary(model)
+```
+
+```{r}
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(x, y, alpha = 0)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+```
+
+```{r}
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+```
+
+```{r}
+#find coefficients of best model
+best_model <- glmnet(x, y, alpha = 0, lambda = best_lambda)
+coef(best_model)
+```
+
+```{r}
+#produce Ridge trace plot
+plot(model, xvar = "lambda")
+```
+```{r}
+#use fitted best model to make predictions
+y_predicted <- predict(model, s = best_lambda, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+rsq
+```
+
